@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Chatbot</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Instrument Sans', sans-serif; }
+    .chat-bg {
+      background-color: #efeae2;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6cfca' fill-opacity='0.25'%3E%3Ccircle cx='10' cy='10' r='1.5'/%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3Ccircle cx='50' cy='15' r='1.2'/%3E%3Ccircle cx='20' cy='45' r='0.8'/%3E%3Ccircle cx='45' cy='50' r='1'/%3E%3C/g%3E%3C/svg%3E");
+    }
+    .msg-in { background: #fff; border-radius: 0 8px 8px 8px; }
+    .msg-out { background: #d9fdd3; border-radius: 8px 0 8px 8px; }
+    .msg-in::before {
+      content: ''; position: absolute; top: 0; left: -8px;
+      border-width: 0 8px 8px 0; border-style: solid; border-color: transparent #fff transparent transparent;
+    }
+    .msg-out::before {
+      content: ''; position: absolute; top: 0; right: -8px;
+      border-width: 0 0 8px 8px; border-style: solid; border-color: transparent transparent transparent #d9fdd3;
+    }
+    .typing-dot { animation: blink 1.4s infinite both; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,80%,100%{opacity:.3} 40%{opacity:1} }
+    #chat-scroll::-webkit-scrollbar { width: 6px; }
+    #chat-scroll::-webkit-scrollbar-thumb { background: #b8b8b8; border-radius: 3px; }
+  </style>
+  <style>body { box-sizing: border-box; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full bg-[#111b21]">
+  <div class="h-full w-full flex flex-col max-w-lg mx-auto shadow-2xl" style="max-height:100%;"><!-- Header -->
+   <div id="header" class="flex items-center gap-3 px-4 py-2.5 bg-[#008069] text-white flex-shrink-0">
+    <div class="w-10 h-10 rounded-full bg-[#25d366] flex items-center justify-center font-bold text-lg">
+     🤖
+    </div>
+    <div class="flex-1 min-w-0">
+     <div id="bot-name" class="font-semibold text-[15px] truncate">
+      Support Bot
+     </div>
+     <div class="text-[12px] text-green-100 opacity-80">
+      online
+     </div>
+    </div>
+    <div class="flex gap-4 opacity-80"><i data-lucide="video" class="w-5 h-5"></i> <i data-lucide="phone" class="w-5 h-5"></i> <i data-lucide="more-vertical" class="w-5 h-5"></i>
+    </div>
+   </div><!-- Chat Area -->
+   <div id="chat-scroll" class="flex-1 overflow-y-auto chat-bg px-3 py-3">
+    <div id="messages" class="flex flex-col gap-1.5"></div>
+   </div><!-- Quick Replies -->
+   <div id="quick-replies" class="flex gap-2 px-3 py-2 bg-[#efeae2] overflow-x-auto flex-shrink-0 border-t border-[#d1d7db]" style="display:none;">
+   </div><!-- Input Bar -->
+   <div class="flex items-end gap-2 px-2 py-2 bg-[#f0f2f5] flex-shrink-0"><button class="p-2 text-[#54656f]"><i data-lucide="smile" class="w-6 h-6"></i></button>
+    <div class="flex-1 bg-white rounded-3xl flex items-end px-3 py-2 min-h-[42px]"><textarea id="msg-input" rows="1" placeholder="Type a message" class="flex-1 outline-none resize-none text-[15px] text-[#111b21] bg-transparent max-h-24 leading-snug" style="height:22px;"></textarea>
+    </div><button id="send-btn" class="w-10 h-10 rounded-full bg-[#008069] text-white flex items-center justify-center flex-shrink-0 hover:bg-[#006e5a] transition-colors"> <i data-lucide="send" class="w-5 h-5"></i> </button>
+   </div>
+  </div>
+  <script>
+    const defaultConfig = {
+      bot_name: 'Support Bot',
+      welcome_message: 'Hi there! 👋 I\'m your assistant. How can I help you today?',
+      background_color: '#008069',
+      surface_color: '#ffffff',
+      text_color: '#111b21',
+      primary_action_color: '#008069',
+      secondary_action_color: '#54656f',
+      font_family: 'Instrument Sans',
+      font_size: 15
+    };
+
+    let messages = [];
+    let currentData = [];
+
+    // Bot conversation tree
+    const botReplies = {
+      default: {
+        text: null, // set from config
+        quickReplies: ['📦 Track Order', '💬 FAQs', '🛠 Technical Help', '👋 Say Hello']
+      },
+      '📦 track order': {
+        text: 'Sure! Please share your order number and I\'ll look it up for you. 📋',
+        quickReplies: ['🔙 Main Menu']
+      },
+      '💬 faqs': {
+        text: 'Here are our most common questions:\n\n1️⃣ What are your hours?\n→ Mon–Fri, 9am–6pm\n\n2️⃣ Do you offer refunds?\n→ Yes, within 30 days\n\n3️⃣ How long is shipping?\n→ 3–5 business days',
+        quickReplies: ['📦 Track Order', '🛠 Technical Help', '🔙 Main Menu']
+      },
+      '🛠 technical help': {
+        text: 'I can help with tech issues! What\'s going on?\n\n• App not loading\n• Payment failed\n• Account locked\n\nDescribe your issue and I\'ll assist! 🔧',
+        quickReplies: ['🔙 Main Menu']
+      },
+      '👋 say hello': {
+        text: 'Hello! 😊 Great to meet you! Feel free to ask me anything.',
+        quickReplies: ['📦 Track Order', '💬 FAQs', '🛠 Technical Help']
+      },
+      '🔙 main menu': {
+        text: 'No problem! What else can I help with?',
+        quickReplies: ['📦 Track Order', '💬 FAQs', '🛠 Technical Help', '👋 Say Hello']
+      }
+    };
+
+    const msgContainer = document.getElementById('messages');
+    const chatScroll = document.getElementById('chat-scroll');
+    const input = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const quickRepliesEl = document.getElementById('quick-replies');
+
+    function timeStr() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(text, type, animate = true) {
+      const wrapper = document.createElement('div');
+      wrapper.className = `flex ${type === 'out' ? 'justify-end' : 'justify-start'}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = `relative px-3 py-1.5 max-w-[80%] ${type === 'out' ? 'msg-out' : 'msg-in'} shadow-sm`;
+      if (animate) { bubble.style.opacity = '0'; bubble.style.transform = 'translateY(8px)'; }
+
+      const textEl = document.createElement('div');
+      textEl.className = 'text-[14px] text-[#111b21] whitespace-pre-wrap leading-relaxed pr-12';
+      textEl.textContent = text;
+
+      const time = document.createElement('div');
+      time.className = 'text-[11px] text-[#667781] text-right -mt-1 flex items-center justify-end gap-1';
+      time.innerHTML = timeStr() + (type === 'out' ? ' <svg width="16" height="11" viewBox="0 0 16 11"><path d="M11.07.66L4.88 6.85 2.62 4.59l-.99.99 3.25 3.25 7.18-7.18z" fill="#53bdeb"/><path d="M7.07.66L.88 6.85l.99.99L7.07 2.64z" fill="#53bdeb"/></svg>' : '');
+
+      bubble.appendChild(textEl);
+      bubble.appendChild(time);
+      wrapper.appendChild(bubble);
+      msgContainer.appendChild(wrapper);
+
+      if (animate) {
+        requestAnimationFrame(() => {
+          bubble.style.transition = 'opacity 0.25s, transform 0.25s';
+          bubble.style.opacity = '1';
+          bubble.style.transform = 'translateY(0)';
+        });
+      }
+      scrollDown();
+    }
+
+    function showTyping() {
+      const wrapper = document.createElement('div');
+      wrapper.id = 'typing-indicator';
+      wrapper.className = 'flex justify-start';
+      wrapper.innerHTML = `<div class="msg-in relative px-4 py-3 shadow-sm flex gap-1.5">
+        <span class="typing-dot w-2 h-2 rounded-full bg-[#9aa0a6] inline-block"></span>
+        <span class="typing-dot w-2 h-2 rounded-full bg-[#9aa0a6] inline-block"></span>
+        <span class="typing-dot w-2 h-2 rounded-full bg-[#9aa0a6] inline-block"></span>
+      </div>`;
+      msgContainer.appendChild(wrapper);
+      scrollDown();
+    }
+
+    function removeTyping() {
+      const t = document.getElementById('typing-indicator');
+      if (t) t.remove();
+    }
+
+    function showQuickReplies(replies) {
+      quickRepliesEl.innerHTML = '';
+      if (!replies || !replies.length) { quickRepliesEl.style.display = 'none'; return; }
+      quickRepliesEl.style.display = 'flex';
+      replies.forEach(r => {
+        const btn = document.createElement('button');
+        btn.className = 'whitespace-nowrap px-4 py-1.5 rounded-full border border-[#008069] text-[#008069] text-[13px] font-medium hover:bg-[#008069] hover:text-white transition-colors flex-shrink-0';
+        btn.textContent = r;
+        btn.onclick = () => handleSend(r);
+        quickRepliesEl.appendChild(btn);
+      });
+    }
+
+    function scrollDown() {
+      requestAnimationFrame(() => chatScroll.scrollTop = chatScroll.scrollHeight);
+    }
+
+    function getBotReply(userMsg) {
+      const key = userMsg.toLowerCase().trim();
+      if (botReplies[key]) return botReplies[key];
+      // fuzzy match
+      for (const k of Object.keys(botReplies)) {
+        if (k !== 'default' && key.includes(k.replace(/[^\w\s]/g, '').trim().toLowerCase())) return botReplies[k];
+      }
+      return {
+        text: "I'm not sure about that, but I'm happy to help! Try one of the options below. 😊",
+        quickReplies: ['📦 Track Order', '💬 FAQs', '🛠 Technical Help', '🔙 Main Menu']
+      };
+    }
+
+    async function handleSend(text) {
+      const msg = (text || input.value).trim();
+      if (!msg) return;
+      input.value = '';
+      input.style.height = '22px';
+      quickRepliesEl.style.display = 'none';
+
+      addMessage(msg, 'out');
+
+      setTimeout(() => showTyping(), 300);
+
+      try {
+        const response = await fetch('/webhook', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message: msg, sender: 'User' })
+        });
+
+        const data = await response.json();
+        
+        setTimeout(() => {
+          removeTyping();
+          addMessage(data.reply, 'in');
+        }, 500);
+      } catch (error) {
+        console.error('Error calling webhook:', error);
+        setTimeout(() => {
+          removeTyping();
+          addMessage("Sorry, the backend is not responding. Ensure Spring Boot is running on port 8080.", 'in');
+        }, 500);
+      }
+    }
+
+    sendBtn.addEventListener('click', () => handleSend());
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    });
+    input.addEventListener('input', () => {
+      input.style.height = '22px';
+      input.style.height = Math.min(input.scrollHeight, 96) + 'px';
+    });
+
+    // Init welcome
+    function showWelcome() {
+      const cfg = window.elementSdk?.config || defaultConfig;
+      const welcomeText = cfg.welcome_message || defaultConfig.welcome_message;
+      msgContainer.innerHTML = '';
+      setTimeout(() => {
+        showTyping();
+        setTimeout(() => {
+          removeTyping();
+          addMessage(welcomeText, 'in');
+          showQuickReplies(botReplies.default.quickReplies);
+        }, 1000);
+      }, 500);
+    }
+
+    // Element SDK
+    window.elementSdk.init({
+      defaultConfig,
+      onConfigChange: async (config) => {
+        const name = config.bot_name || defaultConfig.bot_name;
+        const font = config.font_family || defaultConfig.font_family;
+        const size = config.font_size || defaultConfig.font_size;
+        const bg = config.background_color || defaultConfig.background_color;
+        const surface = config.surface_color || defaultConfig.surface_color;
+        const textC = config.text_color || defaultConfig.text_color;
+        const primary = config.primary_action_color || defaultConfig.primary_action_color;
+        const secondary = config.secondary_action_color || defaultConfig.secondary_action_color;
+
+        document.getElementById('bot-name').textContent = name;
+        document.getElementById('header').style.backgroundColor = bg;
+        document.getElementById('send-btn').style.backgroundColor = primary;
+        document.querySelectorAll('.msg-in').forEach(el => el.style.backgroundColor = surface);
+        document.body.style.fontFamily = `${font}, sans-serif`;
+
+        // Update quick reply button styles
+        quickRepliesEl.querySelectorAll('button').forEach(btn => {
+          btn.style.borderColor = primary;
+          btn.style.color = primary;
+        });
+      },
+      mapToCapabilities: (config) => ({
+        recolorables: [
+          { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+          { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+          { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+          { get: () => config.primary_action_color || defaultConfig.primary_action_color, set: v => { config.primary_action_color = v; window.elementSdk.setConfig({ primary_action_color: v }); } },
+          { get: () => config.secondary_action_color || defaultConfig.secondary_action_color, set: v => { config.secondary_action_color = v; window.elementSdk.setConfig({ secondary_action_color: v }); } },
+        ],
+        borderables: [],
+        fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+        fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } },
+      }),
+      mapToEditPanelValues: (config) => new Map([
+        ['bot_name', config.bot_name || defaultConfig.bot_name],
+        ['welcome_message', config.welcome_message || defaultConfig.welcome_message],
+      ])
+    });
+
+    showWelcome();
+    lucide.createIcons();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f12bf69b16020fe',t:'MTc3NzAwODk1OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
