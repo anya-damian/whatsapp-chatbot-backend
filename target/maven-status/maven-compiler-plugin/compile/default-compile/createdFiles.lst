@@ -1,0 +1,5 @@
+com\springboot\whatsapp_chat_bot\controller\WebhookController.class
+com\springboot\whatsapp_chat_bot\model\MessageResponse.class
+com\springboot\whatsapp_chat_bot\SpringbootWhatsappChatBotApplication.class
+com\springboot\whatsapp_chat_bot\service\ChatbotService.class
+com\springboot\whatsapp_chat_bot\model\MessageRequest.class
